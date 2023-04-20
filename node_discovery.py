@@ -14,7 +14,7 @@ import time
 import random
 import socket
 
-import routing
+import routing.routing as routing
 
 NUM_SWITCHES = 3
 SERVICE_TYPE = "IPV4"

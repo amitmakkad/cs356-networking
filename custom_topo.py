@@ -12,7 +12,7 @@ import re
 import time
 import urllib.request
 import random
-import routing
+import routing.routing as routing
 
 def get_regex_num(str):
         pattern = r"\d+"
@@ -39,7 +39,7 @@ class MyTopo(Topo):
 
     def input_topology(self):
 
-        f = open("input/topology.txt")
+        f = open("input/topology.txt", "r")
         
         num_hosts, num_switches = list(map(int,f.readline().split(' ')))
         hosts, switches = [], []
@@ -104,7 +104,6 @@ class Network():
 
         return host_port
     
-
     def get_edges(self):
 
         edges = []
@@ -129,7 +128,6 @@ class Network():
 
         return edges
     
-
     def show_network_info(self):
         
         host_port = self.get_host_switch_port()
@@ -159,7 +157,7 @@ class Network():
         print("\n")
         print("Switch to Host Edges :")
         for host, (switch, port) in host_port.items():
-            print("Host =",host," Switch = ",switch," Port =",port)
+            print("Host:",host," Switch:",switch," Port:",port)
 
         print("\n")
 
@@ -169,11 +167,13 @@ class Network():
             return
         
         def update_link_bandwidth(s1, s2, bw):
+            if bw == 0:
+                return
             s1, s2 = self.net.get("s"+str(s1)), self.net.get("s"+str(s2))
             for intf in s1.intfList():
                 if intf.link:
                     if intf.link.intf1.node == s2 or intf.link.intf2.node == s2:
-                        res = intf.config(bw=bw)
+                        intf.config(bw=bw)
         try:
             h1, h2, bw = query
             path = optimal_paths[(h1,h2)]
@@ -188,7 +188,7 @@ class Network():
             return
 
 
-    def update_routes(self, query):
+    def compute_routes(self, query):
         
         host_port = self.get_host_switch_port()
         edges = self.get_edges()
@@ -220,12 +220,16 @@ class Network():
         f.close()
 
         optimal_paths = routing.find_shortest_paths()
+        if optimal_paths == -1:
+            return -1
+
         self.update_route_bandwidth(optimal_paths, query)
+        print(self.topo.bandwidth)
 
     def begin(self):
         self.net.start()
         self.show_network_info()
-        self.update_routes(None)
+        self.compute_routes(None)
         CustomCLI(self)
         self.net.stop()
 
@@ -255,8 +259,10 @@ class CustomCLI(CLI):
             
             src, dst = self.get_host_num(cmd[0], service_type), self.get_host_num(cmd[1], service_type)
             
-            bw = float(cmd[3])
-            self.network.update_routes([src, dst, bw])
+            bw = int(cmd[3])
+            if self.network.compute_routes([src, dst, bw]) == -1:
+                raise self.CommandException("No path available! Connection cannot be made")
+
 
         except Exception as E:
             print("Invalid Command :", E)
