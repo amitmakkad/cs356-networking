@@ -12,12 +12,12 @@ from ryu.lib import hub
 
 import time
 import random
-import socket
 import json
+import ast
 
 import routing.routing as routing
 
-SERVICE_TYPE = "MAC"
+
 
 def swap(s1, s2):
     if s1>s2:
@@ -41,8 +41,6 @@ def input_data(self):
 
     link = f.readline()
 
-    print("here")
-
     while link:
         
         s1, s2, bw, delay = list(map(int,link.split(' ')))
@@ -53,15 +51,20 @@ def input_data(self):
         
     f.close()
 
+def get_host_addresses(host):
+    
+    return  {
+        "MAC": host.mac
+    }
 
 class SimpleSwitch13(app_manager.RyuApp):
 
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        
-        super(SimpleSwitch13, self).__init__(*args, **kwargs)
 
+        super(SimpleSwitch13, self).__init__(*args, **kwargs)
+        
         self.topology_api_app = self
         self.mac_to_port = {}
 
@@ -75,25 +78,13 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.bandwidth = {}
         self.delay = {}
 
-        self.host_port = {
-            1: (1,1),
-            2: (5,1),
-            3: (6,1),
-            4: (7,1)
-        }
+        self.host_port = {}
 
         self.datapaths = {}
 
         self.flows_added = False
-        self.optimal_paths = {}
 
         self.monitor_thread = hub.spawn(self._monitor)
-
-        self.host_mac = {
-        } 
-
-        self.host_ipv4 = {
-        } 
 
         input_data(self)
 
@@ -154,21 +145,17 @@ class SimpleSwitch13(app_manager.RyuApp):
             req = parser.OFPFlowStatsRequest(datapath)
             datapath.send_msg(req)
 
-    def add_optimal_flows(self):
+    def add_optimal_flows(self, optimal_paths, service_type):
 
         try:
 
             self.flows_added = False
             self.clear_flows()
         
-            for (h1, h2), path in self.optimal_paths.items():
+            for (h1, h2), path in optimal_paths.items():
 
-                if SERVICE_TYPE == "IPV4":
-                    src = self.interface_to_ipv4["h" + str(h1)]
-                    dst = self.interface_to_ipv4["h" + str(h2)]
-                else:
-                    src = self.interface_to_mac["h" + str(h1)]
-                    dst = self.interface_to_mac["h" + str(h2)]
+                src = self.hosts[h1-1][service_type]
+                dst = self.hosts[h2-1][service_type]
 
                 for i in range(len(path)):
 
@@ -178,10 +165,15 @@ class SimpleSwitch13(app_manager.RyuApp):
                     
                     parser = datapath.ofproto_parser
 
-                    if SERVICE_TYPE == "IPV4":
-                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,ipv4_dst=dst) 
-                    else:
+                    if service_type == "MAC":
                         match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,eth_dst=dst) 
+
+                    elif service_type == "IPV4":
+                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,ipv4_dst=dst) 
+
+                    else:
+                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,ipv6_dst=dst)
+                    
                     
                     actions = [parser.OFPActionOutput(out_port)]
 
@@ -191,26 +183,48 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.flows_added = True
 
         except Exception as E:
-            print(E)
+            print("add_optimal_flows", E)
             self.flows_added = False
+
+    def update_route_bandwidth(self, optimal_paths, query):
+
+        if query is None:
+            return
+        
+        h1, h2, bw = query
+        path = optimal_paths[(h1,h2)]
+        for i in range(len(path) - 1):
+            s1, s2 = path[i][0], path[i+1][0]
+            s1,s2 = swap(s1,s2)
+            self.bandwidth[(s1,s2)]-=bw
+            if self.bandwidth[(s1,s2)] < 0:
+                raise FloatingPointError("Bandwidth Negative Error")
+        
+    def get_host_num(self, addr, service_type):
+        for i in range(len(self.hosts)):
+            if self.hosts[i][service_type] == addr:
+                return i+1
+        raise ValueError("Invalid Host Address")
     
     @set_ev_cls(event.EventSwitchEnter)
     def get_topology_data(self, ev):
 
         switch_list = get_switch(self.topology_api_app, None)
         self.switches = [switch.dp.id for switch in switch_list]
+
         edge_list = get_link(self.topology_api_app, None)
         self.edges = [[(link.src.dpid, link.src.port_no), (link.dst.dpid, link.dst.port_no)] for link in edge_list if link.src.dpid < link.dst.dpid]
+        
         host_list = get_all_host(self.topology_api_app)
-        self.hosts = [host.mac for host in host_list]
+        self.hosts = [get_host_addresses(host) for host in host_list]
         for host in host_list:
-            print("ip = ",host.ipv4)
+            self.host_port[host.mac] = (host.port.dpid, host.port.port_no) 
 
         print ("switches ", self.switches)
         print ("links ", self.edges)
         print("hosts ",self.hosts)
 
-        if len(self.switches) == self.num_switches and not self.flows_added:
+        if len(self.switches) == self.num_switches and (not self.flows_added):
             self.flow_watcher()
             time.sleep(2)
 
@@ -219,38 +233,59 @@ class SimpleSwitch13(app_manager.RyuApp):
     def _event_host_add_handler(self, ev):
         host = ev.host
         self.logger.info("Host %s joined network on port %d of switch %s", host.mac, host.port.port_no, host.port.dpid)
-
+    
     def get_link_params(self, s1, s2):
         s1,s2 = swap(s1,s2)
         return self.bandwidth[(s1,s2)], self.delay[(s1,s2)]
-    
-    def update_route_bandwidth(self, optimal_paths, query):
 
-        if query is None:
-            return
-        
+    def add_paths(self, req, optimal_paths):
+
+        src, dst, bw, service_type = req["src"], req["dst"], req["bw"], req["service_type"]
+
+        initRequest = False
+
         try:
-            h1, h2, bw = query
-            path = optimal_paths[(h1,h2)]
-            for i in range(len(path) - 1):
-                s1, s2 = path[i][0], path[i+1][0]
-                s1, s2 = swap(s1,s2)
-                self.bandwidth[(s1,s2)]-=bw
-                if self.bandwidth[(s1,s2)] < 0:
-                    print("BW Negative Error")
+            with open("input/response.json", "r") as file:
+                res = json.loads(file.read())
         except:
-            return
-    
+            initRequest = True
+        
+        if initRequest:
+            res = {
+                "accept_connections": False,
+                "optimal_paths": optimal_paths
+            }
+
+        elif res["accept_connections"] == False:
+            res = {
+                "accept_connections": True,
+                "optimal_paths": optimal_paths
+            }
+
+        else:   
+            res["optimal_paths"] = {ast.literal_eval(k): ast.literal_eval(v) for k, v in res["optimal_paths"].items()}
+            res["optimal_paths"] = res["optimal_paths"] | optimal_paths
+
+        
+        self.add_optimal_flows(res["optimal_paths"], service_type)
+        res["optimal_paths"] = {str(k): str(v) for k, v in res["optimal_paths"].items()}
+
+        with open("input/response.json", "w") as file:
+            json.dump(res, file, indent=4)
+
     def get_shortest_paths(self, req):
 
         try:
 
-            src, dst, bw = req["src"], req["dst"], req["bw"]
-            query = [src, dst, bw] if (src > 0 and dst > 0 and bw > 0) else  None
+            src, dst, bw, service_type = req["src"], req["dst"], req["bw"], req["service_type"]
+            is_query = (src!=-1 and dst!=-1 and bw!=-1)
+            query = None
 
             f = open("input/graph.txt", "w+")
 
-            if query:
+            if is_query:
+                src, dst = self.get_host_num(src, service_type), self.get_host_num(dst, service_type)
+                query = [src, dst, bw]
                 file_write_line(f, query)
             else:
                 file_write_line(f, [-1])
@@ -264,7 +299,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                 file_write_line(f, [edge[0][0], edge[0][1], edge[1][0], edge[1][1], bw, delay])
 
             for host, (switch, port) in self.host_port.items():
-                file_write_line(f, [host, switch, port])
+                file_write_line(f, [self.get_host_num(host, service_type), switch, port])
 
             f.close()
 
@@ -279,11 +314,11 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         print("Flow watcher called")
 
-        if len(self.hosts)!=self.num_hosts or len(self.switches)!=self.num_switches:
+        if len(self.hosts)!=self.num_hosts or len(self.switches)!=self.num_switches or len(self.host_port)!=self.num_hosts:
             print("here1")
             return
 
-        with open("input/requests.json", "r") as file:
+        with open("input/request.json", "r") as file:
             req = json.loads(file.read())
 
         if (req is None) or req["updated"] == False:
@@ -297,18 +332,18 @@ class SimpleSwitch13(app_manager.RyuApp):
             return
         
         req["updated"] = False
-        with open("input/requests.json", "w+") as file:
+        with open("input/request.json", "w+") as file:
             json.dump(req, file, indent=4)
         
+        self.add_paths(req, optimal_paths)
         self.update_route_bandwidth(optimal_paths, query)
-        self.optimal_paths = optimal_paths
-        self.add_optimal_flows()
+
         print("Flow watcher updated paths")
 
     def _monitor(self):
         while True:
             self.flow_watcher()
-            hub.sleep(3)
+            hub.sleep(5)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -329,7 +364,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         if not self.flows_added:
             return
-        
+
         if ev.msg.msg_len < ev.msg.total_len:
             self.logger.debug("packet truncated: only %s of %s bytes",
                               ev.msg.msg_len, ev.msg.total_len)
@@ -341,11 +376,12 @@ class SimpleSwitch13(app_manager.RyuApp):
         dpid = datapath.id
 
         pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocols(ethernet.ethernet)[0]
+        eth = pkt.get_protocols(ethernet.ethernet)[0]        
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             return #ignore lldp packet
-            
+    
+
         dst = eth.dst
         src = eth.src
 

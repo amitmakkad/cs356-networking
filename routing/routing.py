@@ -5,13 +5,6 @@ from .dijkstra import dijkstra, get_output, dijkstra_all_pair
 def get_cost(bw, delay):
     return delay - bw
 
-# 3 3
-# 1 1
-# 2 2
-# 3 3
-# 1 2 3 11
-# 1 3 2 4
-# 2 3 8 9
 
 def find_optimal_paths():
 
@@ -83,8 +76,6 @@ def find_optimal_paths():
             return all_rules
     
     except Exception as E:
-        print(E)
+        print("routing", E)
         return -1
     
-res = find_optimal_paths()
-print(res)

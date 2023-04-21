@@ -42,7 +42,7 @@ class MyTopo(Topo):
         hosts, switches = [], []
 
         for i in range(1, num_hosts + 1):
-            h = self.addHost("h" + str(i), ip="10.0.0."+str(i))
+            h = self.addHost("h" + str(i))
             hosts.append(h)
         
         for i in range(1, num_switches + 1):
@@ -130,9 +130,9 @@ class Network():
         dumpNodeConnections(self.net.hosts)
 
         print("\n")
-        print("Host MAC addresses :")
+        print("Host MAC and IP addresses :")
         for host in self.net.hosts:
-            print(host, host.MAC())
+            print(host, host.MAC(), host.IP())
 
         print("\n")
         print("Number of Hosts :",len(self.net.hosts))
@@ -155,7 +155,7 @@ class Network():
         print("\n")
 
     def request_connection(self, req):
-        with open("input/requests.json", "w") as file:
+        with open("input/request.json", "w") as file:
                 json.dump(req, file, indent=4)
 
     def begin(self):
@@ -165,7 +165,8 @@ class Network():
             "updated": True,
             "src": -1,
             "dst": -1,
-            "bw": -1
+            "bw": -1,
+            "service_type": "MAC"
         })
         CustomCLI(self)
         self.net.stop()
@@ -179,9 +180,6 @@ class CustomCLI(CLI):
     def __init__(self, network: Network,  *args, **kwargs):
         self.network = network
         super().__init__(network.net, *args, **kwargs)
-    
-    def get_host_num(self, addr, service_type):
-        return int(addr)
 
     def do_service(self, line):
 
@@ -193,18 +191,19 @@ class CustomCLI(CLI):
             if service_type!='IPV4' and service_type!='MAC':
                 raise self.CommandException("Choose a Valid Service Type")
             
-            src, dst = self.get_host_num(cmd[0], service_type), self.get_host_num(cmd[1], service_type)
+            src, dst = cmd[0], cmd[1]
             bw = int(cmd[3])
 
             self.network.request_connection({
                 "updated": True,
                 "src": src,
                 "dst": dst,
-                "bw": bw
+                "service_type": service_type,
+                "bw": bw,
             })
         
         except Exception as E:
-            print("Invalid Command :", E)
+            print("Could not execute connection request...", E)
 
 if __name__ == '__main__':
     setLogLevel('info')
