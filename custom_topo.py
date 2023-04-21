@@ -13,6 +13,7 @@ import time
 import urllib.request
 import random
 import routing.routing as routing
+import json
 
 def get_regex_num(str):
         pattern = r"\d+"
@@ -31,10 +32,6 @@ def swap(s1, s2):
 class MyTopo(Topo):
 
     def __init__(self, *args, **params):
-
-        self.bandwidth = {}
-        self.delay = {}
-
         super().__init__(*args, **params)
 
     def input_topology(self):
@@ -45,7 +42,7 @@ class MyTopo(Topo):
         hosts, switches = [], []
 
         for i in range(1, num_hosts + 1):
-            h = self.addHost("h" + str(i))
+            h = self.addHost("h" + str(i), ip="10.0.0."+str(i))
             hosts.append(h)
         
         for i in range(1, num_switches + 1):
@@ -63,8 +60,6 @@ class MyTopo(Topo):
             
             s1, s2, bw, delay = list(map(int,link.split(' ')))
             s1,s2 = swap(s1,s2)
-
-            self.bandwidth[(s1,s2)], self.delay[(s1,s2)] = bw, delay
             self.addLink(switches[s1-1], switches[s2-1], cls=TCLink, bw = bw, delay = str(delay) + "ms")
 
             link = f.readline()
@@ -81,9 +76,6 @@ class Network():
         self.topo = MyTopo()
         self.net  = Mininet(topo=self.topo, autoSetMacs=True, controller = lambda name : RemoteController(name,ip="127.0.0.1", port=6653), autoStaticArp=True)
 
-    def get_link_params(self, s1, s2):
-        s1,s2 = swap(s1,s2)
-        return self.topo.bandwidth[(s1,s2)], self.topo.delay[(s1,s2)]
     
     def get_host_switch_port(self):
 
@@ -150,7 +142,8 @@ class Network():
         print("\n")
         print("Switch to Switch Edges :")
         for edge in edges:
-            bw, delay = self.get_link_params(edge[0][0],edge[1][0])
+            # bw, delay = self.get_link_params(edge[0][0],edge[1][0])
+            bw, delay = 0, 0
             print("Switch1:",edge[0][0],"Port1:",edge[0][1],"  Switch2:",edge[1][0],"Port2:",edge[1][1], "  bw =",bw, "delay =",str(delay)+'ms')
         
 
@@ -161,78 +154,21 @@ class Network():
 
         print("\n")
 
-    def update_route_bandwidth(self, optimal_paths, query):
-
-        if query is None:
-            return
-        
-        def update_link_bandwidth(s1, s2, bw):
-            if bw == 0:
-                return
-            s1, s2 = self.net.get("s"+str(s1)), self.net.get("s"+str(s2))
-            for intf in s1.intfList():
-                if intf.link:
-                    if intf.link.intf1.node == s2 or intf.link.intf2.node == s2:
-                        intf.config(bw=bw)
-        try:
-            h1, h2, bw = query
-            path = optimal_paths[(h1,h2)]
-            for i in range(len(path) - 1):
-                s1, s2 = path[i][0], path[i+1][0]
-                s1, s2 = swap(s1,s2)
-                self.topo.bandwidth[(s1,s2)]-=bw
-                update_link_bandwidth(s1, s2, self.topo.bandwidth[(s1,s2)])
-                if self.topo.bandwidth[(s1,s2)] < 0:
-                    print("BW Negative Error")
-        except:
-            return
-
-
-    def compute_routes(self, query):
-        
-        host_port = self.get_host_switch_port()
-        edges = self.get_edges()
-
-        f = open("input/graph.txt","w+")
-
-        def file_write_line(f, line):
-            for data in line:
-                f.write(str(data))
-                f.write(" ")
-            f.write("\n")
-
-        if query is not None:
-            file_write_line(f, query)
-        else:
-            file_write_line(f, [-1])
-
-        file_write_line(f, [len(self.net.hosts), len(self.net.switches)])
-
-        file_write_line(f, [len(edges)])
-
-        for edge in edges:
-            bw, delay = self.get_link_params(edge[0][0],edge[1][0])
-            file_write_line(f, [edge[0][0], edge[0][1], edge[1][0], edge[1][1], bw, delay])
-
-        for host, (switch, port) in host_port.items():
-            file_write_line(f, [host, switch, port])
-
-        f.close()
-
-        optimal_paths = routing.find_shortest_paths()
-        if optimal_paths == -1:
-            return -1
-
-        self.update_route_bandwidth(optimal_paths, query)
-        print(self.topo.bandwidth)
+    def request_connection(self, req):
+        with open("input/requests.json", "w") as file:
+                json.dump(req, file, indent=4)
 
     def begin(self):
         self.net.start()
         self.show_network_info()
-        self.compute_routes(None)
+        self.request_connection({
+            "updated": True,
+            "src": -1,
+            "dst": -1,
+            "bw": -1
+        })
         CustomCLI(self)
         self.net.stop()
-
 
 
 class CustomCLI(CLI):
@@ -258,12 +194,15 @@ class CustomCLI(CLI):
                 raise self.CommandException("Choose a Valid Service Type")
             
             src, dst = self.get_host_num(cmd[0], service_type), self.get_host_num(cmd[1], service_type)
-            
             bw = int(cmd[3])
-            if self.network.compute_routes([src, dst, bw]) == -1:
-                raise self.CommandException("No path available! Connection cannot be made")
 
-
+            self.network.request_connection({
+                "updated": True,
+                "src": src,
+                "dst": dst,
+                "bw": bw
+            })
+        
         except Exception as E:
             print("Invalid Command :", E)
 

@@ -13,11 +13,46 @@ from ryu.lib import hub
 import time
 import random
 import socket
+import json
 
 import routing.routing as routing
 
-NUM_SWITCHES = 3
-SERVICE_TYPE = "IPV4"
+SERVICE_TYPE = "MAC"
+
+def swap(s1, s2):
+    if s1>s2:
+        return s2,s1
+    return s1,s2
+
+def file_write_line(f, line):
+    for data in line:
+        f.write(str(data))
+        f.write(" ")
+    f.write("\n")
+
+def input_data(self):
+
+    f = open("input/topology.txt", "r")
+    
+    self.num_hosts, self.num_switches = list(map(int,f.readline().split(' ')))
+
+    for i in range(self.num_hosts):
+        list(map(int,f.readline().split(' ')))
+
+    link = f.readline()
+
+    print("here")
+
+    while link:
+        
+        s1, s2, bw, delay = list(map(int,link.split(' ')))
+        s1,s2 = swap(s1,s2)
+        self.bandwidth[(s1,s2)], self.delay[(s1,s2)] = bw, delay
+
+        link = f.readline()
+        
+    f.close()
+
 
 class SimpleSwitch13(app_manager.RyuApp):
 
@@ -30,9 +65,22 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.topology_api_app = self
         self.mac_to_port = {}
 
+        self.num_hosts = 0
+        self.num_switches = 0
+
         self.switches = []
-        self.links = []
         self.hosts = []
+        self.edges = []
+
+        self.bandwidth = {}
+        self.delay = {}
+
+        self.host_port = {
+            1: (1,1),
+            2: (5,1),
+            3: (6,1),
+            4: (7,1)
+        }
 
         self.datapaths = {}
 
@@ -41,17 +89,13 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.monitor_thread = hub.spawn(self._monitor)
 
-        self.interface_to_ipv4 = {
-            "h1": "10.0.0.1",
-            "h2": "10.0.0.2",
-            "h3": "10.0.0.3"
+        self.host_mac = {
         } 
 
-        self.interface_to_mac = {
-            "h1": "00:00:00:00:00:01",
-            "h2": "00:00:00:00:00:02",
-            "h3": "00:00:00:00:00:03"
+        self.host_ipv4 = {
         } 
+
+        input_data(self)
 
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
@@ -150,34 +194,23 @@ class SimpleSwitch13(app_manager.RyuApp):
             print(E)
             self.flows_added = False
     
-
-    def flow_watcher(self):
-        print("Flow watcher called")
-        paths = routing.get_shortest_paths()
-        if paths == -1:
-            print("Flow watcher blocked")
-            return
-        self.optimal_paths = paths
-        self.add_optimal_flows()
-        print("Flow watcher updated paths")
-
-    def _monitor(self):
-        while True:
-            self.flow_watcher()
-            hub.sleep(3)
-
     @set_ev_cls(event.EventSwitchEnter)
     def get_topology_data(self, ev):
 
         switch_list = get_switch(self.topology_api_app, None)
         self.switches = [switch.dp.id for switch in switch_list]
-        links_list = get_link(self.topology_api_app, None)
-        self.links = [(link.src.dpid, link.dst.dpid, {"s_port": link.src.port_no, "d_port": link.dst.port_no}) for link in links_list]
-    
-        print ("switches ", self.switches)
-        print ("links ", self.links)
+        edge_list = get_link(self.topology_api_app, None)
+        self.edges = [[(link.src.dpid, link.src.port_no), (link.dst.dpid, link.dst.port_no)] for link in edge_list if link.src.dpid < link.dst.dpid]
+        host_list = get_all_host(self.topology_api_app)
+        self.hosts = [host.mac for host in host_list]
+        for host in host_list:
+            print("ip = ",host.ipv4)
 
-        if len(self.switches) == NUM_SWITCHES and not self.flows_added:
+        print ("switches ", self.switches)
+        print ("links ", self.edges)
+        print("hosts ",self.hosts)
+
+        if len(self.switches) == self.num_switches and not self.flows_added:
             self.flow_watcher()
             time.sleep(2)
 
@@ -187,6 +220,95 @@ class SimpleSwitch13(app_manager.RyuApp):
         host = ev.host
         self.logger.info("Host %s joined network on port %d of switch %s", host.mac, host.port.port_no, host.port.dpid)
 
+    def get_link_params(self, s1, s2):
+        s1,s2 = swap(s1,s2)
+        return self.bandwidth[(s1,s2)], self.delay[(s1,s2)]
+    
+    def update_route_bandwidth(self, optimal_paths, query):
+
+        if query is None:
+            return
+        
+        try:
+            h1, h2, bw = query
+            path = optimal_paths[(h1,h2)]
+            for i in range(len(path) - 1):
+                s1, s2 = path[i][0], path[i+1][0]
+                s1, s2 = swap(s1,s2)
+                self.bandwidth[(s1,s2)]-=bw
+                if self.bandwidth[(s1,s2)] < 0:
+                    print("BW Negative Error")
+        except:
+            return
+    
+    def get_shortest_paths(self, req):
+
+        try:
+
+            src, dst, bw = req["src"], req["dst"], req["bw"]
+            query = [src, dst, bw] if (src > 0 and dst > 0 and bw > 0) else  None
+
+            f = open("input/graph.txt", "w+")
+
+            if query:
+                file_write_line(f, query)
+            else:
+                file_write_line(f, [-1])
+
+            file_write_line(f, [self.num_hosts, self.num_switches])
+
+            file_write_line(f, [len(self.edges)])
+
+            for edge in self.edges:
+                bw, delay = self.get_link_params(edge[0][0],edge[1][0])
+                file_write_line(f, [edge[0][0], edge[0][1], edge[1][0], edge[1][1], bw, delay])
+
+            for host, (switch, port) in self.host_port.items():
+                file_write_line(f, [host, switch, port])
+
+            f.close()
+
+            return routing.find_optimal_paths(), query
+
+        except Exception as E:
+            print("get_shortest_paths", E)
+            return -1, None
+
+
+    def flow_watcher(self):
+
+        print("Flow watcher called")
+
+        if len(self.hosts)!=self.num_hosts or len(self.switches)!=self.num_switches:
+            print("here1")
+            return
+
+        with open("input/requests.json", "r") as file:
+            req = json.loads(file.read())
+
+        if (req is None) or req["updated"] == False:
+            print("here2")
+            return
+
+        optimal_paths, query = self.get_shortest_paths(req)
+        
+        if optimal_paths == -1:
+            print("Flow watcher blocked")
+            return
+        
+        req["updated"] = False
+        with open("input/requests.json", "w+") as file:
+            json.dump(req, file, indent=4)
+        
+        self.update_route_bandwidth(optimal_paths, query)
+        self.optimal_paths = optimal_paths
+        self.add_optimal_flows()
+        print("Flow watcher updated paths")
+
+    def _monitor(self):
+        while True:
+            self.flow_watcher()
+            hub.sleep(3)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
