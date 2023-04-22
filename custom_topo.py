@@ -8,26 +8,13 @@ from mininet.log import setLogLevel
 from mininet.node import RemoteController
 from mininet.link import TCLink
 
-import re
 import time
 import urllib.request
 import random
-import routing.routing as routing
 import json
 
-def get_regex_num(str):
-        pattern = r"\d+"
-        match = re.search(pattern, str)
-        if match:
-            number = int(match.group())
-            return number
-        else:
-            print("No match found")
-
-def swap(s1, s2):
-    if s1>s2:
-        return s2,s1
-    return s1,s2
+import routing.routing as routing
+from .utils import *
 
 class MyTopo(Topo):
 
@@ -77,53 +64,7 @@ class Network():
         self.net  = Mininet(topo=self.topo, autoSetMacs=True, controller = lambda name : RemoteController(name,ip="127.0.0.1", port=6653), autoStaticArp=True)
 
     
-    def get_host_switch_port(self):
-
-        host_port = {}
-
-        for host in self.net.hosts:
-            for intf in host.intfList():
-                if intf.link:
-                    node1, port_str_1 = intf.link.intf1.name.split('-')[0], intf.link.intf1.name.split('-')[1]
-                    node2, port_str_2 = intf.link.intf2.name.split('-')[0], intf.link.intf2.name.split('-')[1]
-
-                    if node1[0]=='h' and node2[0]=='s':
-
-                        host_num, port_num_1   = get_regex_num(node1), get_regex_num(port_str_1)
-                        switch_num, port_num_2 = get_regex_num(node2), get_regex_num(port_str_2)
-
-                        host_port[host_num] = (switch_num, port_num_2)
-
-        return host_port
-    
-    def get_edges(self):
-
-        edges = []
-
-        for switch in self.net.switches:
-            for intf in switch.intfList():
-                if intf.link:
-                    node1, port_str_1 = intf.link.intf1.name.split('-')[0], intf.link.intf1.name.split('-')[1]
-                    node2, port_str_2 = intf.link.intf2.name.split('-')[0], intf.link.intf2.name.split('-')[1]
-
-                    if node1[0]=='s' and node2[0]=='s':
-
-                        switch_num_1, port_num_1 = get_regex_num(node1), get_regex_num(port_str_1)
-                        switch_num_2, port_num_2 = get_regex_num(node2), get_regex_num(port_str_2)
-
-                        edge = [(switch_num_1,port_num_1),(switch_num_2,port_num_2)]
-                        if switch_num_1 > switch_num_2:
-                            edge[0], edge[1] = edge[1], edge[0]
-
-                        if edge not in edges:
-                            edges.append(edge)
-
-        return edges
-    
     def show_network_info(self):
-        
-        host_port = self.get_host_switch_port()
-        edges = self.get_edges()
 
         print("\n")
         print("Host connections :")
@@ -133,26 +74,6 @@ class Network():
         print("Host MAC and IP addresses :")
         for host in self.net.hosts:
             print(host, host.MAC(), host.IP())
-
-        print("\n")
-        print("Number of Hosts :",len(self.net.hosts))
-        print("Number of Switches :",len(self.net.switches))
-
-        
-        print("\n")
-        print("Switch to Switch Edges :")
-        for edge in edges:
-            # bw, delay = self.get_link_params(edge[0][0],edge[1][0])
-            bw, delay = 0, 0
-            print("Switch1:",edge[0][0],"Port1:",edge[0][1],"  Switch2:",edge[1][0],"Port2:",edge[1][1], "  bw =",bw, "delay =",str(delay)+'ms')
-        
-
-        print("\n")
-        print("Switch to Host Edges :")
-        for host, (switch, port) in host_port.items():
-            print("Host:",host," Switch:",switch," Port:",port)
-
-        print("\n")
 
     def request_connection(self, req):
         with open("input/request.json", "w") as file:
