@@ -1,4 +1,23 @@
 import re
+import json
+
+
+buffer_files = {
+    "GRAPH": "input/graph.txt",
+    "REQUEST": "input/request.json",
+    "RESPONSE": "input/response.json"
+}
+
+
+def clear_log():
+    for file_name in buffer_files.values():
+        print(file_name)
+        with open(file_name, "w+") as f:
+            # try:
+            #     json.dump({}, f)
+            # except:
+            #     pass
+            f.read()
 
 def get_regex_num(str):
         pattern = r"\d+"

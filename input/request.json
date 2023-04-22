@@ -1,7 +1,7 @@
 {
     "updated": false,
-    "src": "00:00:00:00:00:02",
-    "dst": "00:00:00:00:00:04",
-    "service_type": "MAC",
-    "bw": 1
+    "src": -1,
+    "dst": -1,
+    "bw": -1,
+    "service_type": "MAC"
 }

@@ -8,13 +8,10 @@ from mininet.log import setLogLevel
 from mininet.node import RemoteController
 from mininet.link import TCLink
 
-import time
-import urllib.request
-import random
 import json
 
 import routing.routing as routing
-from .utils import *
+from utils import *
 
 class MyTopo(Topo):
 

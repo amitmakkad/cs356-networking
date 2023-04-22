@@ -16,7 +16,7 @@ import json
 import ast
 
 import routing.routing as routing
-from .utils import *
+from utils import *
 
 
 class SimpleSwitch13(app_manager.RyuApp):
@@ -48,6 +48,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.monitor_thread = hub.spawn(self._monitor)
 
+        clear_log()
         input_data(self)
 
 
@@ -182,23 +183,34 @@ class SimpleSwitch13(app_manager.RyuApp):
         s1,s2 = swap(s1,s2)
         return self.bandwidth[(s1,s2)], self.delay[(s1,s2)]
 
-    def update_route_bandwidth(self, query, optimal_paths):
-
-        if query is None:
-            return
-        
-        h1, h2, bw = query
-        path = optimal_paths[(h1,h2)]
-        for i in range(len(path) - 1):
-            s1, s2 = path[i][0], path[i+1][0]
-            s1,s2 = swap(s1,s2)
-            self.bandwidth[(s1,s2)]-=bw
-            if self.bandwidth[(s1,s2)] < 0:
-                raise FloatingPointError("Bandwidth Negative Error")
-
-    def add_optimal_paths(self, req, optimal_paths):
-
+    def parse_request(self, req):
         src, dst, bw, service_type = req["src"], req["dst"], req["bw"], req["service_type"]
+        query = None
+
+        if (src!=-1 and dst!=-1 and bw!=-1):
+            src, dst = self.get_host_num(src, service_type), self.get_host_num(dst, service_type)
+            query = [src, dst, bw]
+
+        return query, service_type
+
+
+    def add_paths(self, req, optimal_paths):
+
+        query, service_type = self.parse_request(req)
+
+        def update_path_bandwidth():
+            if query:
+                h1, h2, bw = query
+                path = optimal_paths[(h1,h2)]
+                for i in range(len(path) - 1):
+                    s1, s2 = path[i][0], path[i+1][0]
+                    s1,s2 = swap(s1,s2)
+                    self.bandwidth[(s1,s2)]-=bw
+                    if self.bandwidth[(s1,s2)] < 0:
+                        raise FloatingPointError("Bandwidth Negative Error")
+
+        update_path_bandwidth()
+
 
         initRequest = False
 
@@ -221,29 +233,28 @@ class SimpleSwitch13(app_manager.RyuApp):
             }
 
         else:   
-            res["optimal_paths"] = {ast.literal_eval(k): ast.literal_eval(v) for k, v in res["optimal_paths"].items()}
-            res["optimal_paths"] = res["optimal_paths"] | optimal_paths
-
+            optimal_paths = optimal_paths | {ast.literal_eval(k): ast.literal_eval(v) for k, v in res["optimal_paths"].items()}
+            res = {
+                "accept_connections": True,
+                "optimal_paths": optimal_paths
+            }
         
-        self.add_path_flows(res["optimal_paths"], service_type)
-        res["optimal_paths"] = {str(k): str(v) for k, v in res["optimal_paths"].items()}
+        self.add_path_flows(optimal_paths, service_type)
 
+        res["optimal_paths"] = {str(k): str(v) for k, v in res["optimal_paths"].items()}
         with open("input/response.json", "w") as file:
             json.dump(res, file, indent=4)
+
 
     def get_optimal_paths(self, req):
 
         try:
 
-            src, dst, bw, service_type = req["src"], req["dst"], req["bw"], req["service_type"]
-            is_query = (src!=-1 and dst!=-1 and bw!=-1)
-            query = None
+            query, service_type = self.parse_request(req)
 
             f = open("input/graph.txt", "w+")
 
-            if is_query:
-                src, dst = self.get_host_num(src, service_type), self.get_host_num(dst, service_type)
-                query = [src, dst, bw]
+            if query:
                 file_write_line(f, query)
             else:
                 file_write_line(f, [-1])
@@ -261,41 +272,38 @@ class SimpleSwitch13(app_manager.RyuApp):
 
             f.close()
 
-            return routing.find_optimal_paths(), query
+            optimal_paths = routing.find_optimal_paths()
+            assert optimal_paths!=-1
+
+            self.add_paths(req, optimal_paths)
+
+            return optimal_paths
 
         except Exception as E:
-            print("get_shortest_paths", E)
-            return -1, None
+            print("add_optimal_paths", E)
+            return -1
 
     def query_watcher(self):
 
-        print("Flow watcher called")
-
         if len(self.hosts)!=self.num_hosts or len(self.switches)!=self.num_switches or len(self.host_port)!=self.num_hosts:
-            print("here1", self.hosts, self.switches, self.host_port)
+            print("topology_undiscovered", self.hosts, self.switches, self.host_port)
             return
 
         with open("input/request.json", "r") as file:
             req = json.loads(file.read())
 
-        if (req is None) or req["updated"] == False:
-            print("here2")
+        if req["updated"] == False:
+            print("no_new_request")
             return
-
-        optimal_paths, query = self.get_optimal_paths(req)
         
-        if optimal_paths == -1:
-            print("Flow watcher blocked")
+        if self.get_optimal_paths(req) == -1:
             return
         
         req["updated"] = False
         with open("input/request.json", "w+") as file:
             json.dump(req, file, indent=4)
         
-        self.add_optimal_paths(req, optimal_paths)
-        self.update_route_bandwidth(query, optimal_paths)
-
-        print("Flow watcher updated paths")
+        
 
     def _monitor(self):
         while True:
