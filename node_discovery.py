@@ -54,6 +54,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.datapaths = {}
 
+        self.all_pair_optimal_paths = {}
         self.current_optimal_paths = {}
         self.flows_added = False
         self.num_requests = 0
@@ -222,11 +223,10 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         update_path_bandwidth()
 
-        if self.num_requests <= 1:
-            self.current_optimal_paths = optimal_paths
+        if self.num_requests == 0:
+            self.all_pair_optimal_paths = optimal_paths
 
-        else:
-            self.current_optimal_paths = self.current_optimal_paths | optimal_paths
+        self.current_optimal_paths = optimal_paths if self.num_requests<=1 else self.current_optimal_paths | optimal_paths
 
         self.num_requests+=1
 
@@ -353,11 +353,11 @@ class SimpleSwitchController(ControllerBase):
         try:
             req = json.loads(req.body)
 
-            if app.num_requests!=1:
+            if len(list(app.all_pair_optimal_paths.values())) == 0:
                 raise AssertionError("topology_undiscovered")
             
             query, service_type = app.parse_request(req)
-            optimal_path = str(app.current_optimal_paths[(query[0], query[1])])
+            optimal_path = str(app.all_pair_optimal_paths[(query[0], query[1])])
 
             return self.create_response(res = {
                 "success": True,

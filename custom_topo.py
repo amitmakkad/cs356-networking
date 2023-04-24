@@ -18,9 +18,11 @@ from utils import *
 class MyTopo(Topo):
 
     def __init__(self, *args, **params):
-        super().__init__(*args, **params)
 
         self.hname_to_address = {}
+        self.bandwidth = {}
+
+        super().__init__(*args, **params)
 
     def input_topology(self):
 
@@ -48,6 +50,8 @@ class MyTopo(Topo):
             
             s1, s2, bw, delay = list(map(int,link.split(' ')))
             s1,s2 = swap(s1,s2)
+
+            self.bandwidth[(s1,s2)] = bw
             self.addLink(switches[s1-1], switches[s2-1], cls=TCLink, bw = bw, delay = str(delay) + "ms")
 
             link = f.readline()
@@ -56,6 +60,8 @@ class MyTopo(Topo):
 
     def build(self):
         return self.input_topology()
+    
+    
 
 
 class Network():
@@ -76,6 +82,26 @@ class Network():
         for host in self.net.hosts:
             print(host, host.MAC(), host.IP())
             self.topo.hname_to_address[str(host)] = {"MAC": host.MAC(), "IPV4": host.IP()}
+
+
+    def update_route_bandwidth(self, optimal_path, bw):
+        
+        def update_link_bandwidth(s1, s2, bw):
+            if bw == 0:
+                return
+            s1, s2 = self.net.get("s"+str(s1)), self.net.get("s"+str(s2))
+            for intf in s1.intfList():
+                if intf.link:
+                    if intf.link.intf1.node == s2 or intf.link.intf2.node == s2:
+                        intf.config(bw=bw)
+       
+        for i in range(len(optimal_path) - 1):
+            s1, s2 = optimal_path[i][0], optimal_path[i+1][0]
+            s1, s2 = swap(s1,s2)
+            self.topo.bandwidth[(s1,s2)]-=bw
+            if self.topo.bandwidth[(s1,s2)] < 0:
+                raise ValueError("BW Negative Error")
+            update_link_bandwidth(s1, s2, self.topo.bandwidth[(s1,s2)])
 
     def path_request(self, req):
         url = "http://0.0.0.0:8080/path_request"
@@ -102,6 +128,12 @@ class Network():
                 print(response["message"])
             time.sleep(1)
 
+    def get_host_from_address(self, addr, service_type):
+        print(addr, service_type)
+        for key, value in self.topo.hname_to_address.items():
+            if value[service_type] == addr:
+                return self.net.get(key)
+
     def begin(self):
         self.net.start()
         self.show_network_info()
@@ -125,24 +157,39 @@ class CustomCLI(CLI):
         super().__init__(network.net, *args, **kwargs)
 
     def do_path(self, line):
-        cmd = line.strip().split(' ')
 
-        hname1, hname2 = cmd[0], cmd[1]
+        try:
 
-        if (hname1 not in self.network.topo.hname_to_address) or (hname2 not in self.network.topo.hname_to_address):
-            raise self.CommandException("Choose Valid Host Names")
+            cmd = line.strip().split(' ')
+
+            hname_src = cmd[0]
+
+            if (hname_src not in self.network.topo.hname_to_address):
+                raise self.CommandException("Choose Valid Host Names")
+            
+            for host in self.network.net.hosts:
+
+                hname_dst = host.name
+
+                if hname_dst != hname_src:
+
+                    optimal_path = ast.literal_eval(self.network.path_request({
+                        "src": self.network.topo.hname_to_address[hname_src]["MAC"],
+                        "dst": self.network.topo.hname_to_address[hname_dst]["MAC"],
+                        "service_type": "MAC",
+                        "bw": -1
+                    }))
+
+                    print(hname_src,"-",hname_dst,":",end=' ')
+
+                    print(hname_src, end=' ')
+                    for node in optimal_path:
+                        print('s',node[0],sep='',end=' ')
+                    print(hname_dst)
+
+        except Exception as E:
+            print("Could not execute path request...", E)
         
-        optimal_path = ast.literal_eval(self.network.path_request({
-            "src": self.network.topo.hname_to_address[hname1]["MAC"],
-            "dst": self.network.topo.hname_to_address[hname2]["MAC"],
-            "service_type": "MAC",
-            "bw": -1
-        }))
-
-        print(hname1, end=' ')
-        for node in optimal_path:
-            print('s',node[0],sep='',end=' ')
-        print(hname2)
         
     def do_service(self, line):
 
@@ -164,10 +211,20 @@ class CustomCLI(CLI):
                 "bw": bw,
             }))
 
+
+            print()
             print("Connection generated using the path:")
             for node in optimal_path:
                 print('s',node[0],sep='',end=' ')
             print()
+
+            h1, h2 = self.network.get_host_from_address(src, service_type), self.network.get_host_from_address(dst, service_type)
+            print(h1, h2)
+            h1.cmd('xterm -e iperf -s &')
+            time.sleep(2)
+            h2.cmd('xterm -hold -e iperf -c %s -t 5 -b %dM' % (h1.IP(), bw))
+
+            self.network.update_route_bandwidth(optimal_path, bw)
 
         except Exception as E:
             print("Could not execute connection request...", E)
