@@ -13,19 +13,29 @@ from ryu.lib import hub
 import time
 import random
 import json
-import ast
 
 import routing.routing as routing
 from utils import *
 
+from ryu.app.wsgi import ControllerBase, WSGIApplication, route
+from ryu.lib import dpid as dpid_lib
+from webob import Request, Response
+
+simple_switch_instance_name = 'simple_switch_api_app'
+
 
 class SimpleSwitch13(app_manager.RyuApp):
 
+    _CONTEXTS = {'wsgi': WSGIApplication}
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
 
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
+
+        wsgi = kwargs['wsgi']
+        wsgi.register(SimpleSwitchController,
+                      {simple_switch_instance_name: self})
         
         self.topology_api_app = self
         self.mac_to_port = {}
@@ -44,12 +54,14 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.datapaths = {}
 
+        self.current_optimal_paths = {}
         self.flows_added = False
-
-        self.monitor_thread = hub.spawn(self._monitor)
+        self.num_requests = 0
 
         clear_log()
         input_data(self)
+
+
 
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
@@ -171,7 +183,6 @@ class SimpleSwitch13(app_manager.RyuApp):
         print("hosts ",self.hosts)
 
         if len(self.switches) == self.num_switches and (not self.flows_added):
-            self.query_watcher()
             time.sleep(2)
 
     @set_ev_cls(event.EventHostAdd)
@@ -187,14 +198,14 @@ class SimpleSwitch13(app_manager.RyuApp):
         src, dst, bw, service_type = req["src"], req["dst"], req["bw"], req["service_type"]
         query = None
 
-        if (src!=-1 and dst!=-1 and bw!=-1):
+        if (src!=-1 and dst!=-1):
             src, dst = self.get_host_num(src, service_type), self.get_host_num(dst, service_type)
             query = [src, dst, bw]
 
         return query, service_type
 
 
-    def add_paths(self, req, optimal_paths):
+    def add_optimal_paths(self, req, optimal_paths):
 
         query, service_type = self.parse_request(req)
 
@@ -211,39 +222,16 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         update_path_bandwidth()
 
+        if self.num_requests <= 1:
+            self.current_optimal_paths = optimal_paths
 
-        initRequest = False
+        else:
+            self.current_optimal_paths = self.current_optimal_paths | optimal_paths
 
-        try:
-            with open("input/response.json", "r") as file:
-                res = json.loads(file.read())
-        except:
-            initRequest = True
+        self.num_requests+=1
+
         
-        if initRequest:
-            res = {
-                "accept_connections": False,
-                "optimal_paths": optimal_paths
-            }
-
-        elif res["accept_connections"] == False:
-            res = {
-                "accept_connections": True,
-                "optimal_paths": optimal_paths
-            }
-
-        else:   
-            optimal_paths = optimal_paths | {ast.literal_eval(k): ast.literal_eval(v) for k, v in res["optimal_paths"].items()}
-            res = {
-                "accept_connections": True,
-                "optimal_paths": optimal_paths
-            }
-        
-        self.add_path_flows(optimal_paths, service_type)
-
-        res["optimal_paths"] = {str(k): str(v) for k, v in res["optimal_paths"].items()}
-        with open("input/response.json", "w") as file:
-            json.dump(res, file, indent=4)
+        self.add_path_flows(self.current_optimal_paths, service_type)
 
 
     def get_optimal_paths(self, req):
@@ -275,41 +263,15 @@ class SimpleSwitch13(app_manager.RyuApp):
             optimal_paths = routing.find_optimal_paths()
             assert optimal_paths!=-1
 
-            self.add_paths(req, optimal_paths)
-
+            self.add_optimal_paths(req, optimal_paths)
             return optimal_paths
 
         except Exception as E:
             print("add_optimal_paths", E)
             return -1
 
-    def query_watcher(self):
-
-        if len(self.hosts)!=self.num_hosts or len(self.switches)!=self.num_switches or len(self.host_port)!=self.num_hosts:
-            print("topology_undiscovered", self.hosts, self.switches, self.host_port)
-            return
-
-        with open("input/request.json", "r") as file:
-            req = json.loads(file.read())
-
-        if req["updated"] == False:
-            print("no_new_request")
-            return
-        
-        if self.get_optimal_paths(req) == -1:
-            return
-        
-        req["updated"] = False
-        with open("input/request.json", "w+") as file:
-            json.dump(req, file, indent=4)
         
         
-
-    def _monitor(self):
-        while True:
-            self.query_watcher()
-            hub.sleep(5)
-
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -326,7 +288,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-
+        
         if not self.flows_added:
             return
 
@@ -371,3 +333,76 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+
+
+class SimpleSwitchController(ControllerBase):
+
+    def __init__(self, req, link, data, **config):
+        super(SimpleSwitchController, self).__init__(req, link, data, **config)
+        self.simple_switch_app : SimpleSwitch13 = data[simple_switch_instance_name]
+
+    def create_response(self, res):
+        body = json.dumps(res)
+        return Response(content_type='application/json', body=body, charset='utf-8')
+
+    @route('simpleswitch', '/path_request', methods=['POST'])
+    def path_request(self, req, **kwargs):
+
+        app = self.simple_switch_app
+
+        try:
+            req = json.loads(req.body)
+
+            if app.num_requests!=1:
+                raise AssertionError("topology_undiscovered")
+            
+            query, service_type = app.parse_request(req)
+            optimal_path = str(app.current_optimal_paths[(query[0], query[1])])
+
+            return self.create_response(res = {
+                "success": True,
+                "message": "Path found successfully",
+                "optimal_path": optimal_path
+            })
+            
+        except Exception as E:
+            return self.create_response(res = {
+                "success": False,
+                "message": str(E)
+            })
+            
+
+    @route('simpleswitch', '/service_request', methods=['POST'])
+    def service_request(self, req, **kwargs):
+
+        app = self.simple_switch_app
+
+        try:
+            req = json.loads(req.body)
+
+            if len(app.hosts)!=app.num_hosts or len(app.switches)!=app.num_switches or len(app.host_port)!=app.num_hosts:
+                print("topology_undiscovered", app.hosts, app.switches, app.host_port)
+                raise AssertionError("topology_undiscovered")
+            
+            optimal_paths = app.get_optimal_paths(req)
+
+            if optimal_paths == -1:
+                raise AssertionError("Could not find a path")
+                
+            else:
+                return self.create_response(res = {
+                    "success": True,
+                    "message": "Path found successfully",
+                    "optimal_path": str(list(optimal_paths.values())[0])
+                })
+        
+        
+        except Exception as E:
+            return self.create_response(res = {
+                "success": False,
+                "message": str(E)
+            })
+            
+
+        
+        

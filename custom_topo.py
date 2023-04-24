@@ -8,7 +8,9 @@ from mininet.log import setLogLevel
 from mininet.node import RemoteController
 from mininet.link import TCLink
 
-import json
+import requests
+import ast
+import time
 
 import routing.routing as routing
 from utils import *
@@ -17,6 +19,8 @@ class MyTopo(Topo):
 
     def __init__(self, *args, **params):
         super().__init__(*args, **params)
+
+        self.hname_to_address = {}
 
     def input_topology(self):
 
@@ -71,16 +75,37 @@ class Network():
         print("Host MAC and IP addresses :")
         for host in self.net.hosts:
             print(host, host.MAC(), host.IP())
+            self.topo.hname_to_address[str(host)] = {"MAC": host.MAC(), "IPV4": host.IP()}
 
-    def request_connection(self, req):
-        with open("input/request.json", "w") as file:
-                json.dump(req, file, indent=4)
+    def path_request(self, req):
+        url = "http://0.0.0.0:8080/path_request"
+        headers = {"Content-Type": "application/json"}
+
+        while True:
+            response = requests.post(url, headers=headers, json=req).json()
+            if response["success"]==True:
+                return response["optimal_path"]
+            else:
+                print(response["message"])
+            time.sleep(1)
+
+
+    def service_request(self, req):
+        url = "http://0.0.0.0:8080/service_request"
+        headers = {"Content-Type": "application/json"}
+
+        while True:
+            response = requests.post(url, headers=headers, json=req).json()
+            if response["success"]==True:
+                return response["optimal_path"]
+            else:
+                print(response["message"])
+            time.sleep(1)
 
     def begin(self):
         self.net.start()
         self.show_network_info()
-        self.request_connection({
-            "updated": True,
+        self.service_request({
             "src": -1,
             "dst": -1,
             "bw": -1,
@@ -99,6 +124,26 @@ class CustomCLI(CLI):
         self.network = network
         super().__init__(network.net, *args, **kwargs)
 
+    def do_path(self, line):
+        cmd = line.strip().split(' ')
+
+        hname1, hname2 = cmd[0], cmd[1]
+
+        if (hname1 not in self.network.topo.hname_to_address) or (hname2 not in self.network.topo.hname_to_address):
+            raise self.CommandException("Choose Valid Host Names")
+        
+        optimal_path = ast.literal_eval(self.network.path_request({
+            "src": self.network.topo.hname_to_address[hname1]["MAC"],
+            "dst": self.network.topo.hname_to_address[hname2]["MAC"],
+            "service_type": "MAC",
+            "bw": -1
+        }))
+
+        print(hname1, end=' ')
+        for node in optimal_path:
+            print('s',node[0],sep='',end=' ')
+        print(hname2)
+        
     def do_service(self, line):
 
         try:
@@ -112,14 +157,18 @@ class CustomCLI(CLI):
             src, dst = cmd[0], cmd[1]
             bw = int(cmd[3])
 
-            self.network.request_connection({
-                "updated": True,
+            optimal_path = ast.literal_eval(self.network.service_request({
                 "src": src,
                 "dst": dst,
                 "service_type": service_type,
                 "bw": bw,
-            })
-        
+            }))
+
+            print("Connection generated using the path:")
+            for node in optimal_path:
+                print('s',node[0],sep='',end=' ')
+            print()
+
         except Exception as E:
             print("Could not execute connection request...", E)
 
