@@ -13,15 +13,6 @@ def clear_log():
         with open(file_name, "w+") as f:
             f.read()
 
-def get_regex_num(str):
-        pattern = r"\d+"
-        match = re.search(pattern, str)
-        if match:
-            number = int(match.group())
-            return number
-        else:
-            print("No match found")
-
 def swap(s1, s2):
     if s1>s2:
         return s2,s1
@@ -54,6 +45,12 @@ def input_data(self):
         
     f.close()
 
+def valid_host(host):
+    mac_str = str(host.mac)
+    print("mac",type(mac_str), mac_str[0])
+    if mac_str[0]!='0':
+        return False
+    return True
 
 def get_host_addresses(host):
     

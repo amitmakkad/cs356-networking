@@ -88,7 +88,7 @@ class Network():
         
         def update_link_bandwidth(s1, s2, bw):
             if bw == 0:
-                return
+                bw = 0.01
             s1, s2 = self.net.get("s"+str(s1)), self.net.get("s"+str(s2))
             for intf in s1.intfList():
                 if intf.link:
@@ -218,7 +218,7 @@ class CustomCLI(CLI):
             h1, h2 = self.network.get_host_from_address(src, service_type), self.network.get_host_from_address(dst, service_type)
             h1.cmd('xterm -e iperf -s &')
             time.sleep(2)
-            h2.cmd('xterm -hold -e iperf -c %s -t 5 -b %dM &' % (h1.IP(), bw))
+            h2.cmd('xterm -hold -e iperf -c %s -t 5 -b %dM' % (h1.IP(), bw))
 
             self.network.update_route_bandwidth(optimal_path, bw)
             print()

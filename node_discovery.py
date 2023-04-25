@@ -142,10 +142,10 @@ class SimpleSwitch13(app_manager.RyuApp):
                     parser = datapath.ofproto_parser
 
                     if service_type == "MAC":
-                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,eth_dst=dst) 
+                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,eth_src=src,eth_dst=dst) 
 
                     elif service_type == "IPV4":
-                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,ipv4_dst=dst) 
+                        match = parser.OFPMatch(in_port=in_port,eth_type=0x0800,ipv4_src=src,ipv4_dst=dst) 
                     
                     
                     actions = [parser.OFPActionOutput(out_port)]
@@ -175,9 +175,15 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.edges = [[(link.src.dpid, link.src.port_no), (link.dst.dpid, link.dst.port_no)] for link in edge_list if link.src.dpid < link.dst.dpid]
         
         host_list = get_all_host(self.topology_api_app)
-        self.hosts = [get_host_addresses(host) for host in host_list]
+
+        self.hosts = []
+
         for host in host_list:
+            if not valid_host(host):
+                continue
+            self.hosts.append(get_host_addresses(host))
             self.host_port[host.mac] = (host.port.dpid, host.port.port_no) 
+            
 
         print ("switches ", self.switches)
         print ("links ", self.edges)
