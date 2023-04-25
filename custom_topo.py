@@ -129,7 +129,6 @@ class Network():
             time.sleep(1)
 
     def get_host_from_address(self, addr, service_type):
-        print(addr, service_type)
         for key, value in self.topo.hname_to_address.items():
             if value[service_type] == addr:
                 return self.net.get(key)
@@ -156,7 +155,7 @@ class CustomCLI(CLI):
         self.network = network
         super().__init__(network.net, *args, **kwargs)
 
-    def do_path(self, line):
+    def do_paths(self, line):
 
         try:
 
@@ -165,7 +164,7 @@ class CustomCLI(CLI):
             hname_src = cmd[0]
 
             if (hname_src not in self.network.topo.hname_to_address):
-                raise self.CommandException("Choose Valid Host Names")
+                raise self.CommandException("Choose Valid Host Name")
             
             for host in self.network.net.hosts:
 
@@ -211,20 +210,18 @@ class CustomCLI(CLI):
                 "bw": bw,
             }))
 
-
-            print()
             print("Connection generated using the path:")
             for node in optimal_path:
                 print('s',node[0],sep='',end=' ')
             print()
 
             h1, h2 = self.network.get_host_from_address(src, service_type), self.network.get_host_from_address(dst, service_type)
-            print(h1, h2)
             h1.cmd('xterm -e iperf -s &')
             time.sleep(2)
-            h2.cmd('xterm -hold -e iperf -c %s -t 5 -b %dM' % (h1.IP(), bw))
+            h2.cmd('xterm -hold -e iperf -c %s -t 5 -b %dM &' % (h1.IP(), bw))
 
             self.network.update_route_bandwidth(optimal_path, bw)
+            print()
 
         except Exception as E:
             print("Could not execute connection request...", E)
@@ -234,29 +231,4 @@ if __name__ == '__main__':
     Network().begin()
     
 
-# # Get the link between h1 and s1
-# link = net.get('s2').connectionsTo(net.get('s3'))[0][0]
-
-# # Modify the bandwidth of the link
-# link.intf1.config(bw=20)
-
-# Get input from the CLI
-# input_var = input('Enter some input: ')
-
-# # Do something with the input
-# print('You entered:', input_var)
-
-
-
-# h1, h2 = net.get('h1'), net.get('h2')
-
-# h1.cmd('xterm -e nc -l 5000 &')
-# time.sleep(2)
-# h2.cmd('xterm -e echo "Hello World" | nc -q 1 -w 5 00:00:00:00:00:01 5000')
-
-# h1.cmd('xterm -e python3 -m http.server 80 &')
-# time.sleep(2)
-
-# output = h2.cmd('time wget -O - http://%s:80' % h1.IP())
-# print(output.split(' '))
 
