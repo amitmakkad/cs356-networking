@@ -62,6 +62,12 @@ class SimpleSwitch13(app_manager.RyuApp):
         clear_log()
         input_data(self)
 
+        
+        for (s1,s2), value in self.bandwidth.items():
+            bw, delay = self.bandwidth[(s1,s2)], self.delay[(s1,s2)]
+            cost = 10*((delay+1)/(bw+1))
+            print(f"s{s1}-s{s2}:", cost)
+
 
 
 
@@ -179,7 +185,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.hosts = []
 
         for host in host_list:
-            if not valid_host(host):
+            if not is_valid_host(host):
                 continue
             self.hosts.append(get_host_addresses(host))
             self.host_port[host.mac] = (host.port.dpid, host.port.port_no) 
@@ -188,6 +194,17 @@ class SimpleSwitch13(app_manager.RyuApp):
         print ("switches ", self.switches)
         print ("links ", self.edges)
         print("hosts ",self.hosts)
+
+        self.switches.sort()
+        print("Switches:",end=' ')
+        for s in self.switches:
+            print(f"s{s}",end=' ')
+        print()
+
+        print("Links:")
+        for edge in self.edges:
+            print(f"s{edge[0][0]}-{edge[0][1]} <----> s{edge[1][0]}-{edge[1][1]}")
+
 
         if len(self.switches) == self.num_switches and (not self.flows_added):
             time.sleep(2)

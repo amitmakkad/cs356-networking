@@ -7,25 +7,8 @@ def get_cost(bw, delay):
     if bw == 0:
         return 10000000
     
-    return (delay+1)/(bw+1) 
+    return 10*((delay+1)/(bw+1))
 
-
-    return delay - bw
-
-
-# 4 7
-# 1 1
-# 2 5
-# 3 6
-# 4 7
-# 1 2 5 10
-# 1 3 5 10
-# 2 4 5 10
-# 3 4 5 10
-# 4 5 5 10
-# 4 7 5 10
-# 5 6 5 10
-# 5 7 5 10
 
 def find_optimal_paths():
 

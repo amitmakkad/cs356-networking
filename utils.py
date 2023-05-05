@@ -45,7 +45,7 @@ def input_data(self):
         
     f.close()
 
-def valid_host(host):
+def is_valid_host(host):
     mac_str = str(host.mac)
     print("mac",type(mac_str), mac_str[0])
     if mac_str[0]!='0':

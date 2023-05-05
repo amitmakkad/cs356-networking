@@ -59,6 +59,7 @@ class MyTopo(Topo):
         f.close()
 
     def build(self):
+        time.sleep(3)
         return self.input_topology()
     
     
