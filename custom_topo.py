@@ -59,7 +59,6 @@ class MyTopo(Topo):
         f.close()
 
     def build(self):
-        time.sleep(3)
         return self.input_topology()
     
     
@@ -228,6 +227,7 @@ class CustomCLI(CLI):
             print("Could not execute connection request...", E)
 
 if __name__ == '__main__':
+    time.sleep(3)
     setLogLevel('info')
     Network().begin()
     
