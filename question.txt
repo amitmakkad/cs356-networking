@@ -1,0 +1,74 @@
+Course Project
+Create a custom topology of 10 nodes (decide your own topology (except linear or bus)). Randomly select the link delay (1ms – 5ms) for all links in your topology between the switches. Set link bandwidth to 50Mb.
+
+Start your topology with Mininet and connect to the RYU controller.
+
+ 
+
+Following tasks need to be performed:
+
+Write a program to discover the topology, including the switches and hosts in the network. (sample RYU controller file for node discovery is node_discovery.py)
+Run a client-server program at a pair of hosts to identify the link cost based on the time it takes to traverse the link.
+Use the above information for computing the paths in the network for all pairs of hosts in the network.
+Take user input to request the connection by asking for following:
+Source and destination host
+Service requests are either IPv4 or MAC based
+Bandwidth of the service (1-5Mb)
+           Identify the switches where configuration need to be updated. Provide details of the configuration to be written over each intermediate switch on the path.
+
+Include the already configured services in path computation.
+You need to keep track of the available bandwidth of the links (how much utilized, how much unutilized)
+Based on the delay and available bandwidth information compute the new cost for the link. Cost will be updated with changes in the available bandwidth.
+Run step 4.
+ 
+
+ 
+
+Evaluation:
+
+ 
+
+We will test your code on a different topology. All five steps will be tested on this different topology.
+
+ 
+
+After discovery your program should be able to display the nodes, hosts and links as presented in the Mininet log.
+After 2nd step, you must show all the links in the network and their associated cost. In following format:
+            <nodei-nodej>: <cost>
+
+             For example link between node s3 and s4 has cost 40 than it will be displayed as:
+
+                     S3-S4: 40
+
+In 3rd step, you will ask from the user to select a host from where paths to all other hosts need to be computed. Paths will be displayed as following:
+            Hi-Hj :Hi->Si->Sj->….->Hj
+
+ 
+
+            Paths for all pairs of hosts from the selected host must be displayed.
+
+ 
+
+ In 4th step, you will first display the chosen path as above and then you must display the configuration  (rule) for each switch present over the requested path. You can use same format as it is used in the Mininet to display the rules.
+ 
+
+ 
+
+ In 5th step, you will first display the chosen path as above and then you must display the configuration  (rule) for each switch present over the requested path. You can use the same format as it is used in the Mininet to display the rules.
+ 
+
+ This project carries 100 Marks where
+
+Each step carries 15 Marks
+5 Marks for your code which must be readable and properly commented.
+5 Marks for successfully running your code on your topology.
+5 Marks for successfully running your code on our topology.
+ 
+
+There will be 25 Marks Viva.
+Deadline for project submission is 5-May-2023 5:00PM (No Late submission).
+
+Viva will be on 6-May-2023 and 7-May-2023.
+
+
+For any query, please reply to this post and make that public for others benefit.
