@@ -9,7 +9,8 @@ A Ryu based SDN (Software defined Networking) controller to implement switch cir
 * Source and destination host
 * Service requests are either IPv4 or MAC based
 * Bandwidth of the service (1-5Mb)
-6.Identify the switches where configuration need to be updated. Provide details of the configuration to be written over each intermediate switch on the path.
+
+6. Identify the switches where configuration need to be updated. Provide details of the configuration to be written over each intermediate switch on the path.
 7. Include the already configured services in path computation. You need to keep track of the available bandwidth of the links (how much utilized, how much unutilized)
 Based on the delay and available bandwidth information compute the new cost for the link. Cost will be updated with changes in the available bandwidth.
 8. Repeat from step 5 till user gives input.
