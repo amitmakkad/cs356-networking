@@ -1,0 +1,90 @@
+Lab 1: 
+
+sudo mn --topo==linear,3,3 --controller remote
+pingall
+sh ovs-ofctl dump-flows s1
+net
+sh ovs-ofctl add-flow s1 cookie=0x05, priority=500, ip, nw_dst=10.0.0.2,actions=output:2
+sh ovs-ofctl dump-flows s1
+sh ovs-ofctl add-flow s1 cookie=0x0
+
+cookie is the rule id
+
+Lab2 :
+
+sudo mn --topo single,4 --controller remote
+sh ovs-ofctl add-flow s1 cookie=0x05,priority=500,in_port=1,actions=output:2 //add rule 1 at s1
+sh ovs-ofctl add-flow s1 cookie=0x04,priority=500,in_port=2,actions=output:1 //add rule 2 at s2
+sh ovs-ofctl dump-flows s1 //check rules at s1
+h1 to h2
+
+mn-c can be used to clear 
+
+
+
+Lab2 with custom topology:
+
+sudo mn --custom ~/mininet/custom/topo-2sw-2host.py --topo mytopo
+sh ovs-ofctl add-flow s_1_1 cookie=0x04,priority=500,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl dump-flows s_1_1 
+xterm s1 
+    
+
+
+ryu-manager topo_discovery.py --observe-links
+
+sudo mn --topo linear,3 --mac --switch ocsk --controller remote
+
+xterm h1
+
+python3 -m http.server 80 //runserver
+curl 10.0.0.1 //ping using client
+
+ovs-ofctl add-flow s1 "dl_src=00:00:00:00:00:01, dl_type=0x0800, actions=output:2
+ovs-ofctl add-flow s1 "dl_src=00:00:00:00:00:02, dl_type=0x0800, actions=output:1
+ovs-ofctl add-flow s1 "dl_src=00:00:00:00:00:03, dl_type=0x0800, actions=output:1
+
+ovs-ofctl add-flow s2 "dl_src=00:00:00:00:00:01, dl_type=0x0800, actions=output:2
+ovs-ofctl add-flow s2 "dl_src=00:00:00:00:00:02, dl_type=0x0800, actions=output:1
+ovs-ofctl add-flow s2 "dl_src=00:00:00:00:00:03, dl_type=0x0800, actions=output:1
+
+ovs-ofctl add-flow s3 "dl_src=00:00:00:00:00:01, dl_type=0x0800, actions=output:2
+ovs-ofctl add-flow s3 "dl_src=00:00:00:00:00:02, dl_type=0x0800, actions=output:1
+ovs-ofctl add-flow s3 "dl_src=00:00:00:00:00:03, dl_type=0x0800, actions=output:1
+
+
+
+
+IP Rules
+
+sh ovs-ofctl add-flow s1 cookie=0x01,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl add-flow s2 cookie=0x02,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl add-flow s3 cookie=0x03,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+
+sh ovs-ofctl add-flow s1 cookie=0x04,priority=500,ip,nw_dst=10.0.0.2,in_port=1,actions=output:2
+sh ovs-ofctl add-flow s2 cookie=0x05,priority=500,ip,nw_dst=10.0.0.2,in_port=1,actions=output:2
+sh ovs-ofctl add-flow s1 cookie=0x06,priority=500,ip,nw_dst=10.0.0.1,in_port=2,actions=output:1
+sh ovs-ofctl add-flow s2 cookie=0x07,priority=500,ip,nw_dst=10.0.0.1,in_port=2,actions=output:1
+
+
+
+MAC Rules
+
+sh ovs-ofctl add-flow s1 cookie=0x123,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl add-flow s1 cookie=0x827,priority=500,dl_dst=00:00:00:00:00:02,in_port=1,actions=output:2
+sh ovs-ofctl add-flow s1 cookie=0x827,priority=500,dl_dst=00:00:00:00:00:03,in_port=1,actions=output:2
+sh ovs-ofctl add-flow s1 cookie=0x827,priority=500,dl_dst=00:00:00:00:00:01,in_port=2,actions=output:1
+
+sh ovs-ofctl add-flow s2 cookie=0x04,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl add-flow s2 cookie=0x05,priority=500,dl_dst=00:00:00:00:00:02,in_port=1,actions=output:2
+sh ovs-ofctl add-flow s2 cookie=0x06,priority=500,dl_dst=00:00:00:00:00:03,in_port=1,actions=output:3
+
+sh ovs-ofctl add-flow s3 cookie=0x11,priority=100,dl_dst=FF:FF:FF:FF:FF:FF,actions=flood
+sh ovs-ofctl add-flow s3 cookie=0x13,priority=500,dl_dst=00:00:00:00:00:03,in_port=1,actions=output:2
+
+sh ovs-ofctl add-flow s3 cookie=0x07,priority=500,nw_dst=10.0.0.3,in_port=1,actions=output:2
+
+
+sh ovs-ofctl add-flow s1 cookie=0x512,priority=500,nw_dst=10.0.0.2,actions=output:2
+sh ovs-ofctl add-flow s2 cookie=0x091,priority=500,dl_dst=00:00:00:00:00:03,in_port=1,actions=output:3
+
