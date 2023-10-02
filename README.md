@@ -1,5 +1,18 @@
 # cs356-networking
-This program is used to discover the topology, including the switches and hosts in the network using RYU controller. It computes shortest path between two hosts based on the cost function provided. It also takes user input to request connection based on src and dest hosts, service request(IPv4 and MAC) and Bandwidth required.
+A Ryu based SDN (Software defined Networking) controller to implement switch circuiting using SPF (Shortest Path First) algorithm.
+
+1. Create a custom topology of 10 nodes (except linear or bus).
+2. Randomly select the link delay (1ms – 5ms) for all links in your topology between the switches. Set link bandwidth to 50Mb.
+3. Write a program to discover the topology, including the switches and hosts in the network.
+4. Run a client-server program at a pair of hosts to identify the link cost based on the time it takes to traverse the link.
+5. Use the above information for computing the paths in the network for all pairs of hosts in the network. Take user input to request the connection by asking for following:
+* Source and destination host
+* Service requests are either IPv4 or MAC based
+* Bandwidth of the service (1-5Mb)
+6.Identify the switches where configuration need to be updated. Provide details of the configuration to be written over each intermediate switch on the path.
+7. Include the already configured services in path computation. You need to keep track of the available bandwidth of the links (how much utilized, how much unutilized)
+Based on the delay and available bandwidth information compute the new cost for the link. Cost will be updated with changes in the available bandwidth.
+8. Repeat from step 5 till user gives input.
 
  ## Running the project
 
